@@ -1,0 +1,81 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pulse",
+  "version": "0.1.0",
+  "identifier": "dev.pulse.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "popover",
+        "title": "Pulse",
+        "url": "index.html#/popover",
+        "width": 320,
+        "height": 460,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "transparent": true,
+        "visible": false,
+        "shadow": true,
+        "center": false
+      },
+      {
+        "label": "dashboard",
+        "title": "Pulse — Dashboard",
+        "url": "index.html#/dashboard",
+        "width": 820,
+        "height": 640,
+        "minWidth": 760,
+        "minHeight": 560,
+        "resizable": true,
+        "visible": false,
+        "center": true
+      },
+      {
+        "label": "settings",
+        "title": "Pulse — Settings",
+        "url": "index.html#/settings",
+        "width": 380,
+        "height": 560,
+        "resizable": false,
+        "visible": false,
+        "center": true
+      },
+      {
+        "label": "onboarding",
+        "title": "Welcome to Pulse",
+        "url": "index.html#/onboarding",
+        "width": 480,
+        "height": 560,
+        "resizable": false,
+        "visible": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' data: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost"
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "AI usage tracker for developer teams",
+    "longDescription": "Pulse sits in your tray and tracks AI usage per developer per task by reading the JSONL session transcripts that Claude Code already writes to disk. Zero behavior change required."
+  }
+}

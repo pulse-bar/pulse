@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@pulse/types": ["../../packages/types/src/index.ts"],
+      "@/*": ["./ui/src/*"]
+    }
+  },
+  "include": ["ui/src/**/*", "../../packages/types/src/**/*"]
+}

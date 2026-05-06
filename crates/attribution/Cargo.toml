@@ -1,0 +1,16 @@
+[package]
+name        = "pulse-attribution"
+description = "Plugin system that attributes a ParsedTurn to a Jira/Linear/Asana task."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[dependencies]
+pulse-core  = { workspace = true }
+once_cell   = { workspace = true }
+parking_lot = { workspace = true }
+regex       = { workspace = true }
+tracing     = { workspace = true }

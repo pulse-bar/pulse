@@ -1,0 +1,19 @@
+[package]
+name        = "pulse-watcher"
+description = "File-watcher daemon that orchestrates ingest + attribution + storage."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[dependencies]
+pulse-core        = { workspace = true }
+pulse-ingest      = { workspace = true }
+pulse-attribution = { workspace = true }
+notify            = { workspace = true }
+notify-debouncer-full = { workspace = true }
+tokio             = { workspace = true }
+tracing           = { workspace = true }
+parking_lot       = { workspace = true }
