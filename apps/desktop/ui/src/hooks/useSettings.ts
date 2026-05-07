@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { emit, listen } from '@tauri-apps/api/event';
 import type { Settings } from '@pulse/types';
 import { getSettings, isTauri, saveSettings } from '../lib/tauri';
 
@@ -18,6 +19,8 @@ const DEFAULTS: Settings = {
   startAtLogin: true,
 };
 
+const SETTINGS_CHANGED = 'pulse://settings-changed';
+
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
@@ -27,20 +30,40 @@ export function useSettings() {
       setLoading(false);
       return;
     }
+    let alive = true;
+    let unlisten: (() => void) | null = null;
+
     (async () => {
       try {
-        setSettings(await getSettings());
+        const fetched = await getSettings();
+        if (alive) setSettings(fetched);
       } catch (err) {
         console.warn('getSettings failed', err);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
+      }
+
+      try {
+        unlisten = await listen<Settings>(SETTINGS_CHANGED, (e) => {
+          if (alive) setSettings(e.payload);
+        });
+      } catch (err) {
+        console.warn('subscribe settings-changed failed', err);
       }
     })();
+
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
   }, []);
 
   const save = useCallback(async (next: Settings) => {
     setSettings(next);
-    if (isTauri()) await saveSettings(next);
+    if (isTauri()) {
+      await saveSettings(next);
+      await emit(SETTINGS_CHANGED, next);
+    }
   }, []);
 
   return { settings, loading, save };
