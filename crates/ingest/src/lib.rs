@@ -1,5 +1,3 @@
-// Trait + registry. New providers go in `providers/` and register in `with_defaults`.
-
 pub mod providers;
 
 use std::path::PathBuf;

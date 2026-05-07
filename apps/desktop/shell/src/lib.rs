@@ -1,5 +1,3 @@
-// Tauri shell — windows, tray, IPC. All logic lives in pulse-* crates.
-
 mod bridge;
 mod commands;
 mod state;
@@ -42,6 +40,23 @@ pub fn run() {
             commands::open_settings,
             commands::reset_database,
             commands::trigger_full_rescan,
+            commands::get_task_metadata,
+            commands::get_enrichment_status,
+            commands::run_enrichment_now,
+            commands::save_jira_sites,
+            commands::upsert_jira_site,
+            commands::delete_jira_site,
+            commands::store_jira_token,
+            commands::jira_token_present,
+            commands::delete_jira_token,
+            commands::test_jira_site,
+            commands::connect_jira_oauth,
+            commands::oauth_begin,
+            commands::oauth_complete,
+            commands::list_plugins,
+            commands::list_plugin_statuses,
+            commands::list_plugin_instances,
+            commands::test_plugin_instance,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -58,6 +73,12 @@ pub fn run() {
             let bridge_state = shell.clone();
             tauri::async_runtime::spawn(async move {
                 bridge::pump(bridge_handle, bridge_state).await;
+            });
+
+            let enrichment_handle = handle.clone();
+            let enrichment_state = shell.clone();
+            tauri::async_runtime::spawn(async move {
+                bridge::pump_enrichment(enrichment_handle, enrichment_state).await;
             });
 
             // 1Hz tick keeps meters animating during idle ticks.

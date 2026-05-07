@@ -3,10 +3,34 @@
 use std::sync::Arc;
 
 use pulse_core::SessionState;
+use pulse_enrichment::EnrichmentEvent;
 use pulse_watcher::WatcherEvent;
 use tauri::{AppHandle, Emitter};
 
 use crate::state::ShellState;
+
+pub async fn pump_enrichment(handle: AppHandle, state: Arc<ShellState>) {
+    let mut rx = state.enrichment.subscribe();
+    loop {
+        match rx.recv().await {
+            Ok(EnrichmentEvent::TaskEnriched { metadata }) => {
+                let _ = handle.emit("pulse://task-enriched", &metadata);
+            }
+            Ok(EnrichmentEvent::StatusChanged { status }) => {
+                let _ = handle.emit("pulse://enrichment-status", &status);
+            }
+            Ok(EnrichmentEvent::Error { task_id, message }) => {
+                let _ = handle.emit(
+                    "pulse://enrichment-error",
+                    serde_json::json!({ "taskId": task_id, "message": message }),
+                );
+            }
+            Ok(_) => {}
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        }
+    }
+}
 
 pub async fn pump(handle: AppHandle, state: Arc<ShellState>) {
     let mut rx = state.watcher.subscribe();

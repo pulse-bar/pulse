@@ -4,7 +4,11 @@ use std::sync::Arc;
 use anyhow::Context;
 use parking_lot::RwLock;
 use pulse_attribution::Registry as AttributionRegistry;
+use pulse_auth::{CredentialStore, KeychainCredentialStore, OAuthClient};
 use pulse_core::{AppState, Db};
+use pulse_enrichment::{EnrichmentDaemon, EnrichmentHandle, Registry as EnrichmentRegistry};
+use pulse_ext_jira::{JiraEnricher, JiraPlugin};
+use pulse_plugins::PluginRegistry;
 use pulse_ingest::Registry as IngestRegistry;
 use pulse_watcher::{Watcher, WatcherHandle};
 use tauri::{AppHandle, Manager};
@@ -15,8 +19,14 @@ const ONBOARDING_KEY: &str = "pulse.onboarded";
 pub struct ShellState {
     pub state: Arc<AppState>,
     pub watcher: Arc<Watcher>,
+    pub enrichment: EnrichmentDaemon,
+    pub credentials: Arc<dyn CredentialStore>,
+    pub oauth: OAuthClient,
+    pub plugins: PluginRegistry,
     #[allow(dead_code)]
-    handle: Mutex<Option<WatcherHandle>>,
+    watcher_handle: Mutex<Option<WatcherHandle>>,
+    #[allow(dead_code)]
+    enrichment_handle: Mutex<Option<EnrichmentHandle>>,
     onboarded_seen: RwLock<bool>,
     ingest: IngestRegistry,
 }
@@ -36,14 +46,32 @@ impl ShellState {
 
         let ingest = IngestRegistry::with_defaults();
         let attribution = AttributionRegistry::with_defaults();
-        let watcher = Arc::new(Watcher::new(app_state.clone(), ingest.clone(), attribution));
+        let watcher = Arc::new(Watcher::new(
+            app_state.clone(),
+            ingest.clone(),
+            attribution,
+        ));
+        let watcher_handle = (*watcher).clone().run().await;
 
-        let handle = (*watcher).clone().run().await;
+        let credentials: Arc<dyn CredentialStore> = Arc::new(KeychainCredentialStore::new());
+
+        let enrichment_registry = EnrichmentRegistry::new();
+        enrichment_registry.register(Arc::new(JiraEnricher::new(credentials.clone())));
+        let enrichment = EnrichmentDaemon::new(app_state.clone(), enrichment_registry);
+        let enrichment_handle = enrichment.clone().run().await;
+
+        let plugins = PluginRegistry::new();
+        plugins.register(Arc::new(JiraPlugin::new(credentials.clone())));
 
         Ok(Self {
             state: app_state,
             watcher,
-            handle: Mutex::new(Some(handle)),
+            enrichment,
+            credentials,
+            oauth: OAuthClient::new(),
+            plugins,
+            watcher_handle: Mutex::new(Some(watcher_handle)),
+            enrichment_handle: Mutex::new(Some(enrichment_handle)),
             onboarded_seen: RwLock::new(onboarded),
             ingest,
         })
@@ -79,8 +107,11 @@ impl ShellState {
 
     #[allow(dead_code)]
     pub async fn shutdown(self: Arc<Self>) {
-        if let Some(handle) = self.handle.lock().await.take() {
-            handle.shutdown().await;
+        if let Some(h) = self.watcher_handle.lock().await.take() {
+            h.shutdown().await;
+        }
+        if let Some(h) = self.enrichment_handle.lock().await.take() {
+            h.shutdown().await;
         }
     }
 }

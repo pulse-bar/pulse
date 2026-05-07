@@ -5,9 +5,13 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
 
+#[allow(unused_imports)]
+use chrono as _chrono_keepalive;
+
 use crate::error::PulseResult;
 use crate::model::{
-    AttributionConfidence, DailyPoint, ModelShare, Settings, TaskSnapshot, UsageTotals,
+    AttributionConfidence, DailyPoint, ModelShare, Settings, TaskMetadata, TaskSnapshot,
+    UsageTotals,
 };
 use crate::turn::ParsedTurn;
 
@@ -289,9 +293,17 @@ impl Db {
             };
             usage.recompute_cache_hit_rate();
             let task_id = if task_raw.is_empty() { None } else { Some(task_raw) };
+            let metadata = match &task_id {
+                Some(id) => self.task_metadata(id).ok().flatten(),
+                None => None,
+            };
+            let task_name = metadata
+                .as_ref()
+                .and_then(|m| m.title.clone())
+                .or_else(|| task_id.clone());
             out.push(TaskSnapshot {
                 task_id: task_id.clone(),
-                task_name: task_id,
+                task_name,
                 branch: opt_string(branch),
                 cwd: opt_string(cwd),
                 model,
@@ -300,6 +312,7 @@ impl Db {
                 usage,
                 first_seen: parse_ts(&first),
                 last_seen: parse_ts(&last),
+                metadata,
             });
         }
         Ok(out)
@@ -367,6 +380,103 @@ impl Db {
             })
             .collect())
     }
+
+    pub fn upsert_task_metadata(&self, m: &TaskMetadata) -> PulseResult<()> {
+        let conn = self.pool.get()?;
+        conn.execute(
+            r#"INSERT INTO task_metadata
+                (task_id, enricher, title, status, assignee, url, project_key, issue_type, priority, fetched_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(task_id, enricher) DO UPDATE SET
+                  title       = excluded.title,
+                  status      = excluded.status,
+                  assignee    = excluded.assignee,
+                  url         = excluded.url,
+                  project_key = excluded.project_key,
+                  issue_type  = excluded.issue_type,
+                  priority    = excluded.priority,
+                  fetched_at  = excluded.fetched_at
+            "#,
+            params![
+                m.task_id,
+                m.enricher,
+                m.title,
+                m.status,
+                m.assignee,
+                m.url,
+                m.project_key,
+                m.issue_type,
+                m.priority,
+                m.fetched_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn task_metadata(&self, task_id: &str) -> PulseResult<Option<TaskMetadata>> {
+        let conn = self.pool.get()?;
+        let row = conn
+            .query_row(
+                r#"SELECT task_id, enricher, title, status, assignee, url, project_key,
+                          issue_type, priority, fetched_at
+                   FROM task_metadata
+                   WHERE task_id = ?1
+                   ORDER BY fetched_at DESC
+                   LIMIT 1"#,
+                params![task_id],
+                map_metadata_row,
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    pub fn unenriched_task_ids(&self, ttl_secs: u64, limit: u32) -> PulseResult<Vec<String>> {
+        let conn = self.pool.get()?;
+        let cutoff = (Utc::now() - chrono::Duration::seconds(ttl_secs as i64)).to_rfc3339();
+        let mut stmt = conn.prepare(
+            r#"SELECT DISTINCT t.task_id
+               FROM turns t
+               LEFT JOIN task_metadata m ON m.task_id = t.task_id
+               WHERE t.task_id IS NOT NULL
+                 AND (m.fetched_at IS NULL OR m.fetched_at < ?1)
+               ORDER BY MAX(t.ts) DESC
+               LIMIT ?2"#,
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map(params![cutoff, limit as i64], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(ids)
+    }
+
+    pub fn pending_enrichment_count(&self, ttl_secs: u64) -> PulseResult<u64> {
+        let conn = self.pool.get()?;
+        let cutoff = (Utc::now() - chrono::Duration::seconds(ttl_secs as i64)).to_rfc3339();
+        let n: i64 = conn.query_row(
+            r#"SELECT COUNT(DISTINCT t.task_id)
+               FROM turns t
+               LEFT JOIN task_metadata m ON m.task_id = t.task_id
+               WHERE t.task_id IS NOT NULL
+                 AND (m.fetched_at IS NULL OR m.fetched_at < ?1)"#,
+            params![cutoff],
+            |r| r.get(0),
+        )?;
+        Ok(n as u64)
+    }
+}
+
+fn map_metadata_row(r: &rusqlite::Row) -> rusqlite::Result<TaskMetadata> {
+    Ok(TaskMetadata {
+        task_id: r.get(0)?,
+        enricher: r.get(1)?,
+        title: r.get(2)?,
+        status: r.get(3)?,
+        assignee: r.get(4)?,
+        url: r.get(5)?,
+        project_key: r.get(6)?,
+        issue_type: r.get(7)?,
+        priority: r.get(8)?,
+        fetched_at: parse_ts(&r.get::<_, String>(9)?),
+    })
 }
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
@@ -406,6 +516,22 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
 
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS meta     (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+        CREATE TABLE IF NOT EXISTS task_metadata (
+            task_id     TEXT NOT NULL,
+            enricher    TEXT NOT NULL,
+            title       TEXT,
+            status      TEXT,
+            assignee    TEXT,
+            url         TEXT,
+            project_key TEXT,
+            issue_type  TEXT,
+            priority    TEXT,
+            fetched_at  TEXT NOT NULL,
+            PRIMARY KEY (task_id, enricher)
+        );
+        CREATE INDEX IF NOT EXISTS idx_task_metadata_fetched ON task_metadata(fetched_at);
+        CREATE INDEX IF NOT EXISTS idx_task_metadata_project ON task_metadata(project_key);
         "#,
     )?;
 

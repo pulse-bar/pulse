@@ -22,9 +22,13 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 pulse-core        = { workspace = true }
+pulse-auth        = { workspace = true }
 pulse-attribution = { workspace = true }
 pulse-ingest      = { workspace = true }
 pulse-watcher     = { workspace = true }
+pulse-enrichment  = { workspace = true }
+pulse-plugins     = { workspace = true }
+pulse-ext-jira    = { workspace = true }
 
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-shell           = "2"

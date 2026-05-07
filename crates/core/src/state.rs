@@ -54,6 +54,19 @@ impl AppState {
         Ok(())
     }
 
+    // Atomic read-modify-write. Use this instead of .settings() + .save_settings()
+    // anywhere a Tauri command mutates a sub-field — the lock is held for the
+    // whole closure so concurrent commands can't lose each other's writes.
+    pub fn update_settings<F, R>(&self, f: F) -> PulseResult<R>
+    where
+        F: FnOnce(&mut Settings) -> R,
+    {
+        let mut guard = self.settings.write();
+        let result = f(&mut guard);
+        self.db.save_settings(&guard)?;
+        Ok(result)
+    }
+
     pub fn observe(&self, turn: &ParsedTurn, outcome: &AttributionOutcome, cost_usd: f64) {
         let mut win = self.window.write();
         let now = turn.ts;
@@ -124,17 +137,25 @@ impl AppState {
             SessionState::Normal
         };
 
-        let task = win.active_task_id.as_deref().map(|tid| TaskSnapshot {
-            task_id: Some(tid.into()),
-            task_name: Some(tid.into()),
-            branch: win.active_branch.clone(),
-            cwd: win.active_cwd.clone(),
-            model: win.active_model.clone(),
-            confidence: win.active_confidence.unwrap_or(AttributionConfidence::Low),
-            confidence_score: win.active_confidence_score,
-            usage: win.usage.clone(),
-            first_seen: win.started_at.unwrap_or(now),
-            last_seen: win.last_activity.unwrap_or(now),
+        let task = win.active_task_id.as_deref().map(|tid| {
+            let metadata = self.db.task_metadata(tid).ok().flatten();
+            let task_name = metadata
+                .as_ref()
+                .and_then(|m| m.title.clone())
+                .unwrap_or_else(|| tid.into());
+            TaskSnapshot {
+                task_id: Some(tid.into()),
+                task_name: Some(task_name),
+                branch: win.active_branch.clone(),
+                cwd: win.active_cwd.clone(),
+                model: win.active_model.clone(),
+                confidence: win.active_confidence.unwrap_or(AttributionConfidence::Low),
+                confidence_score: win.active_confidence_score,
+                usage: win.usage.clone(),
+                first_seen: win.started_at.unwrap_or(now),
+                last_seen: win.last_activity.unwrap_or(now),
+                metadata,
+            }
         });
 
         self.window.write().last_state = Some(state);

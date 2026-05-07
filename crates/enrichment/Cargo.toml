@@ -1,0 +1,19 @@
+[package]
+name        = "pulse-enrichment"
+description = "Background enrichment daemon and trait for Pulse plugins (Jira, Linear, GitHub Issues, …)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[dependencies]
+pulse-core  = { workspace = true }
+async-trait = "0.1"
+chrono      = { workspace = true }
+parking_lot = { workspace = true }
+serde       = { workspace = true }
+thiserror   = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }

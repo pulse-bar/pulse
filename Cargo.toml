@@ -16,9 +16,14 @@ repository   = "https://github.com/pulse-bar/pulse"
 
 [workspace.dependencies]
 pulse-core        = { path = "crates/core" }
+pulse-auth        = { path = "crates/auth" }
 pulse-attribution = { path = "crates/attribution" }
 pulse-ingest      = { path = "crates/ingest" }
 pulse-watcher     = { path = "crates/watcher" }
+pulse-enrichment  = { path = "crates/enrichment" }
+pulse-plugins     = { path = "crates/plugins" }
+pulse-ext-jira    = { path = "extensions/jira" }
+async-trait       = "0.1"
 
 anyhow         = "1"
 chrono         = { version = "0.4", features = ["serde"] }

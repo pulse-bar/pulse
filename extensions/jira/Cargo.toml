@@ -1,0 +1,25 @@
+[package]
+name        = "pulse-ext-jira"
+description = "Pulse Jira integration — task enrichment, future attribution + notifications."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[dependencies]
+pulse-core       = { workspace = true }
+pulse-enrichment = { workspace = true }
+pulse-auth       = { workspace = true }
+pulse-plugins    = { workspace = true }
+
+async-trait = { workspace = true }
+chrono      = { workspace = true }
+parking_lot = { workspace = true }
+reqwest     = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }
+url         = "2"
