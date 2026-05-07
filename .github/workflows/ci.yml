@@ -16,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -46,7 +45,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Tauri's generate_context! validates frontendDist at build time.
-      - run: mkdir -p apps/desktop/ui/dist && touch apps/desktop/ui/dist/index.html
+      - run: mkdir -p apps/desktop/dist && touch apps/desktop/dist/index.html
 
       - run: cargo check --workspace --all-targets
       - run: cargo test  --workspace
@@ -74,7 +73,6 @@ jobs:
             build-essential
 
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - uses: dtolnay/rust-toolchain@stable
