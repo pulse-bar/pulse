@@ -1,7 +1,3 @@
-// File-watcher daemon. Owns the FS watcher and orchestrates ingest →
-// attribution → storage. Surfaces every meaningful event on a broadcast
-// channel; consumers (Tauri shell, future CLI/daemon) subscribe.
-
 mod ingest_loop;
 mod scan;
 

@@ -1,23 +1,21 @@
 # Plugins
 
-Pulse has two extension points: **attribution** (resolve a turn to a
-task) and **ingest** (read transcripts from a new source). Plugins
-live in `extensions/` as separate crates and are picked up by the
-workspace glob `extensions/*`.
+Pulse has three extension points. Each is a trait + a registry; adding a
+provider is one new file (or one new crate) plus one registration line.
 
-## Built-ins vs. extensions
+| Trait | Lives in | What it does | Built-ins | Extensions today |
+| --- | --- | --- | --- | --- |
+| `IngestProvider`      | `crates/ingest`      | Discover + parse AI-tool transcripts                        | Claude Code           | — |
+| `AttributionProvider` | `crates/attribution` | Resolve a `ParsedTurn` to a task ID                         | git-branch, cwd       | — |
+| `TaskEnricher`        | `crates/enrichment`  | Resolve a task ID into rich metadata (title, status, URL …) | none                  | `extensions/attribution-jira` |
 
-- **Built-ins** ship inside engine crates:
-  `crates/attribution/src/providers/git.rs`,
-  `crates/ingest/src/providers/claude_code.rs`, etc. Use this for
-  plugins everyone wants by default.
-- **Extensions** live under `extensions/<name>/` as their own Cargo
-  crate. Use this for opt-in providers, third-party integrations, or
-  anything you might want to ship behind a feature flag.
+Built-ins ship inside engine crates. Out-of-tree plugins live under
+`extensions/` as their own Cargo crate; the workspace glob
+`extensions/*` picks them up automatically.
 
-The trait surface is the same in both cases.
+---
 
-## Attribution plugin (extension)
+## Add an attribution provider
 
 ```bash
 mkdir -p extensions/attribution-linear/src
@@ -65,15 +63,16 @@ impl AttributionProvider for LinearProvider {
 }
 ```
 
-Register it in the desktop shell (or any consumer):
+Register it in the desktop shell (`apps/desktop/shell/src/state.rs`):
 
 ```rust
-// apps/desktop/shell/src/state.rs
 let attribution = AttributionRegistry::with_defaults();
 attribution.register(Arc::new(pulse_ext_attribution_linear::LinearProvider));
 ```
 
-## Ingest plugin (extension)
+---
+
+## Add an ingest provider
 
 ```rust
 // extensions/ingest-codex/src/lib.rs
@@ -101,7 +100,6 @@ impl IngestProvider for CodexProvider {
     }
 
     fn parse_line(&self, _line: &str) -> Result<Option<ParsedTurn>, ParseError> {
-        // Map Codex's record shape into ParsedTurn. None for non-billable rows.
         Ok(None)
     }
 }
@@ -115,39 +113,130 @@ ingest.register(Arc::new(pulse_ext_ingest_codex::CodexProvider));
 ```
 
 The watcher will:
+
 - Discover existing transcripts on next start.
 - Watch the new directory for live changes.
 - Run every line through your `parse_line` and the attribution registry.
 - Persist alongside Claude Code data; rollups segment by `provider`.
 
-## Patterns to follow
+---
+
+## Add a task enricher (Jira / Linear / GitHub Issues)
+
+A `TaskEnricher` runs **out of band** of the watcher — it polls SQLite
+for unenriched task IDs on its own schedule, calls a remote API, and
+upserts metadata. The watcher pipeline never blocks on network.
+
+### Trait
+
+```rust
+#[async_trait]
+pub trait TaskEnricher: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn matches(&self, task_id: &str, settings: &Settings) -> bool;
+    fn is_configured(&self, settings: &Settings) -> bool;
+    async fn enrich(&self, task_id: &str, settings: &Settings) -> EnrichmentResult<TaskMetadata>;
+    async fn test(&self, settings: &Settings) -> EnrichmentResult<()> { Ok(()) }
+}
+```
+
+### Recipe — Linear enricher
+
+```bash
+mkdir -p extensions/enrichment-linear/src
+```
+
+```toml
+[dependencies]
+pulse-core       = { workspace = true }
+pulse-enrichment = { workspace = true }
+async-trait      = { workspace = true }
+chrono           = { workspace = true }
+keyring          = "3"
+reqwest          = { version = "0.12", features = ["json", "rustls-tls"] }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+tokio            = { workspace = true }
+```
+
+```rust
+// extensions/enrichment-linear/src/lib.rs
+use async_trait::async_trait;
+use pulse_core::{Settings, TaskMetadata};
+use pulse_enrichment::{EnrichmentError, EnrichmentResult, TaskEnricher};
+
+pub struct LinearEnricher { /* http client, keychain helpers, … */ }
+
+#[async_trait]
+impl TaskEnricher for LinearEnricher {
+    fn name(&self) -> &'static str { "linear" }
+
+    fn matches(&self, task_id: &str, _settings: &Settings) -> bool {
+        // route by your own ID format
+        task_id.split_once('-').map(|(p, _)| p.len() <= 4).unwrap_or(false)
+    }
+
+    fn is_configured(&self, settings: &Settings) -> bool {
+        // walk settings.linear.workspaces or however you model it
+        true
+    }
+
+    async fn enrich(&self, task_id: &str, _settings: &Settings) -> EnrichmentResult<TaskMetadata> {
+        // POST to https://api.linear.app/graphql
+        // map response into TaskMetadata
+        Err(EnrichmentError::Other("not implemented".into()))
+    }
+}
+```
+
+Register in the desktop shell:
+
+```rust
+let enrichment = EnrichmentRegistry::new();
+enrichment.register(Arc::new(JiraEnricher::new()));
+enrichment.register(Arc::new(pulse_ext_enrichment_linear::LinearEnricher::new()));
+```
+
+### Multi-instance / multi-team config
+
+The Jira reference impl shows the canonical shape:
+
+- `Settings.jira.sites: Vec<JiraSite>` — N sites, each with project-key list, base URL, auth kind.
+- Routing by project-key prefix (`PROJ-` → site A, `WEB-` → site B).
+- A site with empty `project_keys` acts as a fallback for unrecognised prefixes.
+- Tokens stored in the OS keychain via `keyring-rs`, keyed on `site.id`. Settings only stores references — no plaintext credentials.
+
+Mirror that shape for Linear workspaces, GitHub Issues organisations, etc.
+
+### Patterns to follow
 
 - **Stateless providers.** No mutable globals. Caches go behind a
   `OnceCell` keyed on a stable input.
-- **Don't block the watcher.** Network calls in `try_attribute` will
-  serialise the entire pipeline. For enrichment (e.g. resolving a
-  Jira title), do it in a background task that updates `task_name`
-  via a separate command.
+- **Don't block the watcher.** Network calls in `try_attribute` would
+  serialise the whole pipeline. Enrichers fix this by running in their
+  own daemon — keep that boundary clean.
 - **Confidence calibration.** `high ≥ 0.85`, `medium` in `0.6..0.85`,
   `low` below. The UI uses these for the badge colour.
 - **Priority is `i32`.** Built-ins use 0–100; community plugins can use
   higher numbers if they need to outrank built-ins.
+- **Graceful degradation.** When the API is unreachable, return a
+  recoverable `EnrichmentError`. The daemon will retry on the next tick.
+- **Honour rate-limit hints.** Return `EnrichmentError::RateLimited`
+  with the server's `Retry-After` value; the daemon will sleep before
+  resuming.
 
-## Testing
+### Testing
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn matches_branch() {
-        let mut t = ParsedTurn { /* ... */ };
-        t.branch = Some("feat/PROJ-123-add-foo".into());
-        let out = LinearProvider.try_attribute(&t, &Settings::default()).unwrap();
-        assert_eq!(out.task_id.as_deref(), Some("PROJ-123"));
+    #[tokio::test]
+    async fn jira_routes_by_project_key() {
+        // …
     }
 }
 ```
 
-`cargo test -p pulse-ext-attribution-linear`.
+`cargo test -p pulse-ext-attribution-jira`.

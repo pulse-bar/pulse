@@ -4,8 +4,6 @@ import type { Settings } from '@pulse/types';
 import { getSettings, isTauri, saveSettings } from '../lib/tauri';
 
 const DEFAULTS: Settings = {
-  jiraBaseUrl: null,
-  jiraProjectKeys: [],
   branchRegex: '(?i)([A-Z][A-Z0-9]+-\\d+)',
   pollIntervalMs: 250,
   weeklyTokenBudget: 5_000_000,
@@ -17,6 +15,10 @@ const DEFAULTS: Settings = {
   notifyDailySummary: true,
   appearance: 'dark',
   startAtLogin: true,
+  enrichmentEnabled: true,
+  enrichmentIntervalSecs: 30,
+  enrichmentCacheTtlSecs: 6 * 60 * 60,
+  jira: { sites: [] },
 };
 
 const SETTINGS_CHANGED = 'pulse://settings-changed';

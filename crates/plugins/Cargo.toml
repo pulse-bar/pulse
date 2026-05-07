@@ -1,0 +1,21 @@
+[package]
+name        = "pulse-plugins"
+description = "Plugin manifests, status, and registry — the public surface every Pulse integration declares to."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[dependencies]
+pulse-core = { workspace = true }
+pulse-auth = { workspace = true }
+
+async-trait = { workspace = true }
+chrono      = { workspace = true }
+parking_lot = { workspace = true }
+serde       = { workspace = true }
+thiserror   = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }

@@ -28,10 +28,16 @@ impl AttributionProvider for GitBranchProvider {
         let rx = compiled(&settings.branch_regex);
         let captured = rx.captures(branch)?.get(1)?.as_str().to_uppercase();
 
-        // Foreign keys (outside the configured project list) downgrade to medium.
-        if !settings.jira_project_keys.is_empty() {
-            let prefix_ok = settings
-                .jira_project_keys
+        // Foreign keys (outside any configured Jira-site project list) downgrade to medium.
+        let configured_keys: Vec<String> = settings
+            .jira
+            .sites
+            .iter()
+            .filter(|s| s.enabled)
+            .flat_map(|s| s.project_keys.iter().cloned())
+            .collect();
+        if !configured_keys.is_empty() {
+            let prefix_ok = configured_keys
                 .iter()
                 .any(|k| captured.starts_with(&format!("{}-", k.to_uppercase())));
             if !prefix_ok {

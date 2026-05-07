@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DashboardSummary } from '@pulse/types';
-import { getDashboard, isTauri, onUsageUpdated } from '../lib/tauri';
+import { getDashboard, isTauri, onTaskEnriched, onUsageUpdated } from '../lib/tauri';
 
 export function useDashboard(days: number) {
   const [data, setData] = useState<DashboardSummary | null>(null);
@@ -23,11 +23,12 @@ export function useDashboard(days: number) {
   useEffect(() => {
     refresh();
     if (!isTauri()) return;
-    let unlisten: (() => void) | null = null;
+    const unlisteners: Array<() => void> = [];
     (async () => {
-      unlisten = await onUsageUpdated(() => refresh());
+      unlisteners.push(await onUsageUpdated(() => refresh()));
+      unlisteners.push(await onTaskEnriched(() => refresh()));
     })();
-    return () => unlisten?.();
+    return () => unlisteners.forEach((u) => u());
   }, [refresh]);
 
   return { data, loading, refresh };

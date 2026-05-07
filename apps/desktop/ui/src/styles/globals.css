@@ -1224,6 +1224,9 @@ textarea {
   flex-direction: column;
   overflow: hidden;
 }
+.settings--shell {
+  /* same as .settings; kept as a hook for the new shell layout */
+}
 .settings-header {
   padding: 14px 18px;
   border-bottom: 1px solid var(--b1);
