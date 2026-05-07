@@ -27,7 +27,6 @@ jobs:
             build-essential
 
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - uses: dtolnay/rust-toolchain@stable
@@ -43,4 +42,4 @@ jobs:
           releaseName: 'Pulse ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
-          projectPath: apps/desktop/ui
+          projectPath: apps/desktop
